@@ -1,0 +1,65 @@
+name: MobileCity Selenium Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selenium-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selenium-tests:
+    name: Selenium UI smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MOBILECITY_HEADLESS: "true"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Run Maven tests
+        env:
+          MOBILECITY_USERNAME: ${{ secrets.MOBILECITY_USERNAME }}
+          MOBILECITY_PASSWORD: ${{ secrets.MOBILECITY_PASSWORD }}
+        run: mvn --batch-mode --no-transfer-progress clean test
+
+      - name: Validate UTF-8 run documents
+        id: validate-utf8
+        if: always()
+        shell: pwsh
+        run: ./scripts/validate_run_documents.ps1 -Directory .
+
+      - name: Upload test reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilecity-test-results-${{ github.run_number }}
+          path: |
+            target/surefire-reports/
+            reports/test-execution.log
+            screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 14
